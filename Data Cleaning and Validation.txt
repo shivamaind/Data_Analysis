@@ -1,0 +1,241 @@
+-- Viewing the Transaction Table
+SELECT 
+  * 
+FROM 
+  Forage_quantum.Transaction;
+
+-- TXN_ID can be the primay key, Checking if it has any NULL Values
+SELECT 
+  * 
+FROM 
+  Forage_quantum.Transaction
+WHERE 
+  TXN_ID IS NULL;
+
+-- NO NULL Row Returned.
+
+-- Checking if the total Rows and Total Distinct TXN_ID Rows are same
+SELECT 
+  COUNt(*), 
+  COUNT ( DISTINCT TXN_ID)
+FROM 
+  Forage_quantum.Transaction;
+
+-- We have total 264836 rows but the DISTINCT TXN_ID has 263127 that suggest dupliacy in the data
+
+-- Getting Count of Duplicate Rows by TXN_ID using aggregation method
+SELECT 
+  TXN_ID,
+  COUNT(*)
+FROM 
+  Forage_quantum.Transaction
+GROUP BY 
+  TXN_ID
+HAVING 
+  COUNT(*) > 1
+ORDER BY 
+  COUNT(*) DESC 
+
+-- It Returned Total 1702 with Some Counts of 2 and 3 
+
+-- Viewing the Records having Duplicate TXN_ID column using subquery 
+SELECT
+  *
+FROM
+  Forage_quantum.Transaction 
+WHERE
+  TXN_ID IN (
+    SELECT 
+      TXN_ID
+    FROM 
+      Forage_quantum.Transaction 
+    GROUP BY 
+      TXN_ID
+    HAVING 
+      COUNT (*) > 1
+  )
+ORDER BY 
+  TXN_ID;
+
+
+-- The duplicate TXN_ID is because of purchase of differenct products. Also clear that TXN_ID alone is not the primary Key but with Prod_NBR
+
+-- Checking for NULLs in prod_nbr column 
+SELECT 
+  COUNT(*)
+FROM
+  Forage_quantum.Transaction 
+WHERE 
+  PROD_NBR IS NULL;
+
+-- No NULL for PROD_NBR Columns 
+
+-- Checking for Duplicate Rows based on Primary Key (TXN_ID, PROD_NBR)
+WITH Duplicate_row as ( 
+SELECT 
+  *,
+  RANK() Over ( PARTITION BY TXN_ID, PROD_NBR ORDER BY TXN_ID, PROD_NBR ) as Row 
+FROM 
+  Forage_quantum.Transaction
+  )
+
+SELECT
+  * 
+FROM
+  Duplicate_row 
+WHERE 
+  Row > 1;
+
+-- The above query No Row that signifies No Duplicacy in Table based on Primary Key 
+
+-- Checking for the NULL Records for different columns 
+
+SELECT 
+  * 
+FROM 
+  Forage_quantum.Transaction 
+WHERE 
+  ('DATE', 'STORE_NBR', 'LYLTY_CARD_NBR', 'TXN_ID', 'PROD_NBR', 'PROD_NAME', 'PROD_QTY', 'TOT_SALES') IS NULL;
+
+-- Checking for the length of Prod_Name 
+SELECT 
+  LENGTH(PROD_NAME),
+  PROD_NAME 
+FROM  
+  Forage_quantum.Transaction
+GROUP BY 
+  PROD_NAME
+ORDER BY 
+  PROD_NAME;
+
+-- The PROD_NAME compromises of Product Name and Weight which can be used in different column for analysis 
+SELECT 
+  RIGHT(PROD_NAME, 4) as Weight 
+FROM 
+  Forage_quantum.Transaction;
+
+-- Removing the 'g' on suffix and Changing the Data type as Integer 
+SELECT 
+  CAST(LEFT(RIGHT(PROD_NAME, 4), 3) AS INT64) AS Weight_in_gm 
+FROM  
+  Forage_quantum.Transaction;
+
+
+-- Creating a new table with the additional column 'Weight_in_gm'
+CREATE TABLE Forage_quantum.Transaction_with_weight AS
+SELECT 
+  *,
+  CAST(LEFT(RIGHT(PROD_NAME, 4), 3) AS INT64) AS Weight_in_gm
+FROM  
+  Forage_quantum.Transaction;
+
+-- The product can be categorized into Small, Medium and Big based on the gm
+SELECT 
+  PROD_NAME,
+  CASE 
+    WHEN Weight_in_gm <= 150 THEN 'Small'
+    WHEN Weight_in_gm <= 250 THEN 'Medium'
+    WHEN Weight_in_gm > 250 THEN 'Big'
+    ELSE NULL 
+  END as Category_Size
+FROM 
+  Forage_quantum.Transaction_with_weight
+
+-- Creating a new table with the additional column 'Category_Size'
+CREATE TABLE Forage_quantum.Transaction_with_weight_Category AS
+SELECT 
+  *,
+  CASE 
+    WHEN Weight_in_gm <= 150 THEN 'Small'
+    WHEN Weight_in_gm <= 250 THEN 'Medium'
+    WHEN Weight_in_gm > 250 THEN 'Big'
+    ELSE NULL 
+  END as Category_Size
+FROM  
+  Forage_quantum.Transaction_with_weight;
+
+-- Changing the datatype of STORE_NBR, LYTLTY_CARD_NBR, TXN_ID and PROD_NBR from Integer to String 
+SELECT
+  CAST ( STORE_NBR AS STRING ) AS STORE_NBR_S
+  CAST ( TXN_ID AS STRING ) AS ID_S
+  CAST ( PROD_NBR AS STRING ) AS PROD_NBR_S
+  CAST( LYLTY_CARD_NBR AS STRING ) AS LYLTY_CARD_NBR_S
+-- Using 'S' to identify String
+FROM 
+  Forage_quantum.Transaction_with_weight_Category;
+ 
+
+-- The prefix of LYLTY_CARD_NBR ( EX:259222) should have the initials of Store_NBR (Ex:259)
+
+SELECT 
+  STORE_NBR,
+  LYLTY_CARD_NBR 
+FROM 
+  Forage_quantum.Transaction;
+
+WITH Length_store AS ( 
+  SELECT 
+   STORE_NBR,
+   LENGTH (LYLTY_CARD_NBR_S, STORE_NBR_S) as LYLTY_INT
+  FROM 
+   Forage_quantum.Transaction_with_weight_Category
+  ) 
+
+  SELECT
+    * 
+  FROM
+    Length_store
+  WHERE
+    STORE_NBR <> LYLTY_INT;
+
+-- Returned No Rows, Signifying No Error
+
+-- Validating PROD_NBR And PROD_NAME Using Aggregate Function 
+
+SELECT 
+  PROD_NBR,
+  COUNT( DISTINCT PROD_NAME ) as PROD_CNT 
+FROM 
+  Forage_quantum.Transaction 
+GROUP BY 
+  PROD_NBR
+ORDER BY 
+  COUNT( DISTINCT PROD_NAME )
+
+-- All the PROD_NBR are associated with one PROD_NAME ONLY 
+
+/* Quering to get the final Table */ 
+
+SELECT 
+  CAST(TXN_ID AS STRING) AS ID,
+  CAST(DATE AS DATE) AS Date,
+  CAST(STORE_NBR AS STRING) AS Store_ID,
+  CAST(LYLTY_CARD_NBR AS STRING) AS Loyalty_Card,
+  CAST(PROD_NBR AS STRING) AS Prod_ID,
+  PROD_NAME AS Product,
+  PROD_QTY AS Quantity,
+  TOT_SALES AS Sales_amount,
+  TOT_SALES / PROD_QTY AS Unit_price,
+  LEFT(RIGHT(PROD_NAME, 4), 3)  AS Weight,
+  CASE 
+    WHEN LEFT(RIGHT(PROD_NAME, 4), 3) <= 150 THEN 'Small'
+    WHEN LEFT(RIGHT(PROD_NAME, 4), 3) <= 250 THEN 'Medium'
+    WHEN LEFT(RIGHT(PROD_NAME, 4), 3) > 250 THEN 'Big'
+    ELSE NULL
+  END AS Category 
+FROM 
+  Forage_quantum.Transaction
+ORDER BY 
+  Date ASC; 
+  
+
+
+ 
+
+
+
+
+
+
+
+
